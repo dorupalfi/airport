@@ -1,0 +1,17 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.app-shell {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    font-size: 1.25rem;
+}
