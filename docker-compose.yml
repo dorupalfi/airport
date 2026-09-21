@@ -47,6 +47,8 @@ services:
       POSTGRES_PASSWORD: flight_gate_scheduler
     volumes:
       - flight_gate_scheduler_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flight_gate_scheduler -d flight_gate_scheduler"]
       interval: 5s
