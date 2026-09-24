@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use Database\Factories\GateScheduleFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class GateSchedule extends Model
 {
-    /** @use HasFactory<\Database\Factories\GateScheduleFactory> */
+    /** @use HasFactory<GateScheduleFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -16,6 +17,7 @@ class GateSchedule extends Model
         'occupied_from',
         'occupied_until',
         'delay_minutes',
+        'unallocation_reason',
     ];
 
     public function gate()

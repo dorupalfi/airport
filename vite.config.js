@@ -19,5 +19,10 @@ export default defineConfig({
             port: 5174,
             clientPort: 5174,
         },
+        watch: {
+            usePolling: true,
+            interval: 300,
+            ignored: ['**/node_modules/**', '**/vendor/**', '**/storage/framework/views/**'],
+        },
     },
 });

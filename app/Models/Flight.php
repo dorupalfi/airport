@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use Database\Factories\FlightFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Flight extends Model
 {
-    /** @use HasFactory<\Database\Factories\FlightFactory> */
+    /** @use HasFactory<FlightFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -18,6 +19,7 @@ class Flight extends Model
         'arrival_external_airport_id',
         'estimated_arrival_at',
         'estimated_departure_at',
+        'allocation_status',
     ];
 
     public function airport()
@@ -35,7 +37,7 @@ class Flight extends Model
         return $this->belongsTo(ExternalAirport::class, 'arrival_external_airport_id');
     }
 
-    public function schedule()
+    public function gateSchedule()
     {
         return $this->hasOne(GateSchedule::class);
     }
