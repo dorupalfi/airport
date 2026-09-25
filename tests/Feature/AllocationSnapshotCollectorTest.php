@@ -31,6 +31,7 @@ class AllocationSnapshotCollectorTest extends TestCase
 
     public function test_it_captures_gate_availability_flight_statuses_and_allocation_validity(): void
     {
+        // The fixture covers each gate state and each flight allocation outcome at one UTC instant.
         DB::table('airports')->insert([
             'id' => 1,
             'name' => 'Frankfurt Airport',
@@ -66,6 +67,7 @@ class AllocationSnapshotCollectorTest extends TestCase
         $collectedAt = CarbonImmutable::parse('2026-09-25 12:00:00', 'UTC');
         $collector = app(AllocationSnapshotCollector::class);
 
+        // Collecting the same airport/hour twice must upsert one idempotent snapshot.
         $this->assertSame(1, $collector->collect($collectedAt));
         $this->assertSame(1, $collector->collect($collectedAt));
 
@@ -89,6 +91,7 @@ class AllocationSnapshotCollectorTest extends TestCase
             'invalid_allocations' => 2,
         ]);
 
+        // Rebuilding yesterday stops at the latest elapsed half-hour; a completed day has all 48 slots.
         $this->assertSame(
             22,
             $collector->rebuildDay(

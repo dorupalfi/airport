@@ -67,6 +67,7 @@ class AllocationSnapshotControllerTest extends TestCase
             $this->snapshot(2, '2026-09-24 00:00:00', 15, 5),
         ]);
 
+        // Filter options are global, while the chart data must remain scoped to the selected airport/day.
         $this->getJson('/api/analytics/filters')
             ->assertOk()
             ->assertJsonPath('dates.0', '2026-09-24')
@@ -95,6 +96,8 @@ class AllocationSnapshotControllerTest extends TestCase
                 return $snapshotDate->toDateString() === '2026-09-24' && $airportId === 1;
             })
             ->andReturn(48);
+
+        // Replace the collector to verify the controller contract without recalculating snapshot data here.
         $this->app->instance(AllocationSnapshotCollector::class, $collector);
 
         $this->postJson('/api/analytics/rebuild', [

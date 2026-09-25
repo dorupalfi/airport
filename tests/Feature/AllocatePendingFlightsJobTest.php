@@ -7,6 +7,7 @@ use App\Models\Airport;
 use App\Models\Flight;
 use App\Models\Gate;
 use App\Models\GateSchedule;
+use App\Services\FlightAllocation\FlightAllocationPlanner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -52,7 +53,8 @@ class AllocatePendingFlightsJobTest extends TestCase
             'delay_minutes' => 0,
         ]);
 
-        (new AllocatePendingFlightsJob($airport->id))->handle();
+        // Run the job synchronously so its allocation outcome can be asserted directly.
+        (new AllocatePendingFlightsJob($airport->id))->handle(app(FlightAllocationPlanner::class));
 
         $this->assertSame('unallocated', $pendingFlight->fresh()->allocation_status);
         $this->assertDatabaseHas('gate_schedules', [
@@ -72,7 +74,8 @@ class AllocatePendingFlightsJobTest extends TestCase
         ]);
         $pendingFlight = $this->flightFor($airport, 'SAMEDAY', '2026-09-20 18:00:00');
 
-        (new AllocatePendingFlightsJob($airport->id))->handle();
+        // This control case proves that an available slot on the same UTC day is allocated.
+        (new AllocatePendingFlightsJob($airport->id))->handle(app(FlightAllocationPlanner::class));
 
         $this->assertSame('allocated', $pendingFlight->fresh()->allocation_status);
         $this->assertDatabaseHas('gate_schedules', [

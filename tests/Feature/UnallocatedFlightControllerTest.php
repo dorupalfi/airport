@@ -52,6 +52,7 @@ class UnallocatedFlightControllerTest extends TestCase
             'unallocation_reason' => 'No active gates',
         ]);
 
+        // The endpoint must exclude both allocated flights and unallocated flights from another airport.
         $response = $this->getJson("/api/unallocated-flights?airport_id={$airport->id}&date=2026-09-20");
 
         $response
@@ -96,6 +97,7 @@ class UnallocatedFlightControllerTest extends TestCase
             ]);
         }
 
+        // Sixteen records exercise the page boundary for the configured 15-record page size.
         $firstPage = $this->getJson("/api/unallocated-flights?airport_id={$airport->id}&date=2026-09-20");
         $secondPage = $this->getJson("/api/unallocated-flights?airport_id={$airport->id}&date=2026-09-20&page=2");
 

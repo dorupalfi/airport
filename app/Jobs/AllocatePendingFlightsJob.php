@@ -7,13 +7,13 @@ use App\Models\Flight;
 use App\Models\Gate;
 use App\Models\GateException;
 use App\Models\GateSchedule;
+use App\Services\FlightAllocation\FlightAllocationPlanner;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -29,8 +29,6 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
 
     private const LOCK_RETRY_SECONDS = 5;
 
-    private const NO_AVAILABLE_GATES_IN_CURRENT_DAY = 'No available gates in the current day';
-
     public int $tries = 3;
 
     public int $timeout = 120;
@@ -39,7 +37,7 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
         public readonly int $airportId,
     ) {}
 
-    public function handle(): void
+    public function handle(FlightAllocationPlanner $planner): void
     {
         $lock = Cache::lock($this->lockKey(), self::LOCK_TTL_SECONDS);
 
@@ -65,7 +63,7 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
                 ->pluck('id');
 
             foreach ($flightIds as $flightId) {
-                $this->processFlight((int) $flightId);
+                $this->processFlight((int) $flightId, $planner);
             }
 
             $shouldDispatchNextJob = $this->pendingFlightsQuery()->exists();
@@ -83,9 +81,9 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
         return (string) $this->airportId;
     }
 
-    private function processFlight(int $flightId): void
+    private function processFlight(int $flightId, FlightAllocationPlanner $planner): void
     {
-        DB::transaction(function () use ($flightId): void {
+        DB::transaction(function () use ($flightId, $planner): void {
             $flight = Flight::query()
                 ->whereKey($flightId)
                 ->where('airport_id', $this->airportId)
@@ -124,123 +122,79 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
 
             $gates = Gate::query()
                 ->where('airport_id', $airport->id)
-                ->where('is_active', true)
                 ->orderBy('code')
                 ->lockForUpdate()
                 ->get();
 
-            if ($gates->isEmpty()) {
-                $this->markAsUnallocated($flight, 'No active gates');
-
-                return;
-            }
-
             $occupancyByGateId = $gates
+                ->where('is_active', true)
                 ->mapWithKeys(fn (Gate $gate): array => [
                     $gate->id => $this->effectiveOccupancyMinutes($gate, $airport),
                 ])
                 ->filter(fn (int $minutes): bool => $minutes > 0);
 
-            $gates = $gates
-                ->filter(fn (Gate $gate): bool => $occupancyByGateId->has($gate->id))
-                ->values();
-
-            if ($gates->isEmpty()) {
-                $this->markAsUnallocated($flight, 'Invalid gate occupancy');
-
-                return;
-            }
-
             $plannedDeparture = CarbonImmutable::parse($flight->estimated_departure_at)->utc();
-
-            $earliestDesiredStart = $plannedDeparture
-                ->subMinutes($occupancyByGateId->max());
-
             $gateIds = $gates->modelKeys();
 
-            $schedulesByGate = GateSchedule::query()
-                ->whereIn('gate_id', $gateIds)
-                ->where('occupied_until', '>', $earliestDesiredStart)
-                ->orderBy('occupied_from')
-                ->get()
-                ->groupBy('gate_id');
+            $schedules = collect();
+            $exceptions = collect();
 
-            $exceptionsByGate = GateException::query()
-                ->whereIn('gate_id', $gateIds)
-                ->where(function (Builder $query) use ($earliestDesiredStart): void {
-                    $query->whereNull('end_date')
-                        ->orWhereDate('end_date', '>=', $earliestDesiredStart->toDateString());
-                })
-                ->orderBy('start_date')
-                ->get()
-                ->groupBy('gate_id');
+            if ($occupancyByGateId->isNotEmpty()) {
+                $earliestDesiredStart = $plannedDeparture->subMinutes($occupancyByGateId->max());
 
-            $bestCandidate = null;
-            $hasCandidateOnFutureDay = false;
+                $schedules = GateSchedule::query()
+                    ->whereIn('gate_id', $gateIds)
+                    ->where('occupied_until', '>', $earliestDesiredStart)
+                    ->orderBy('occupied_from')
+                    ->get();
 
-            foreach ($gates as $gate) {
-                $occupancyMinutes = $occupancyByGateId->get($gate->id);
-
-                $desiredStart = $plannedDeparture->subMinutes($occupancyMinutes);
-
-                $slot = $this->findFirstAvailableSlot(
-                    desiredStart: $desiredStart,
-                    occupancyMinutes: $occupancyMinutes,
-                    schedules: $schedulesByGate->get($gate->id, collect()),
-                    exceptions: $exceptionsByGate->get($gate->id, collect()),
-                );
-
-                if (! $slot) {
-                    continue;
-                }
-
-                $nextDayStartsAt = $desiredStart->startOfDay()->addDay();
-
-                if ($slot['occupied_from']->greaterThanOrEqualTo($nextDayStartsAt)) {
-                    $hasCandidateOnFutureDay = true;
-
-                    continue;
-                }
-
-                if (
-                    $bestCandidate === null
-                    || $slot['occupied_until']->lt($bestCandidate['occupied_until'])
-                    || (
-                        $slot['occupied_until']->equalTo($bestCandidate['occupied_until'])
-                        && strcmp($gate->code, $bestCandidate['gate']->code) < 0
-                    )
-                ) {
-                    $bestCandidate = [
-                        'gate' => $gate,
-                        'occupied_from' => $slot['occupied_from'],
-                        'occupied_until' => $slot['occupied_until'],
-                    ];
-                }
+                $exceptions = GateException::query()
+                    ->whereIn('gate_id', $gateIds)
+                    ->where(function (Builder $query) use ($earliestDesiredStart): void {
+                        $query->whereNull('end_date')
+                            ->orWhereDate('end_date', '>=', $earliestDesiredStart->toDateString());
+                    })
+                    ->orderBy('start_date')
+                    ->get();
             }
 
-            if (! $bestCandidate) {
-                $this->markAsUnallocated(
-                    $flight,
-                    $hasCandidateOnFutureDay
-                        ? self::NO_AVAILABLE_GATES_IN_CURRENT_DAY
-                        : 'No available gate',
-                );
+            $decision = $planner->plan(
+                $plannedDeparture,
+                $airport->default_gate_occupancy_minutes,
+                $gates->map(fn (Gate $gate): array => [
+                    'id' => $gate->id,
+                    'code' => $gate->code,
+                    'is_active' => $gate->is_active,
+                    'occupancy_minutes' => $gate->occupancy_minutes,
+                ])->all(),
+                $schedules->map(fn (GateSchedule $schedule): array => [
+                    'gate_id' => $schedule->gate_id,
+                    'occupied_from' => CarbonImmutable::parse($schedule->occupied_from)->utc(),
+                    'occupied_until' => CarbonImmutable::parse($schedule->occupied_until)->utc(),
+                ])->all(),
+                $exceptions->map(fn (GateException $exception): array => [
+                    'gate_id' => $exception->gate_id,
+                    'start_date' => $exception->start_date
+                        ? CarbonImmutable::parse($exception->start_date, 'UTC')
+                        : null,
+                    'end_date' => $exception->end_date
+                        ? CarbonImmutable::parse($exception->end_date, 'UTC')
+                        : null,
+                ])->all(),
+            );
+
+            if (! $decision->isAllocated()) {
+                $this->markAsUnallocated($flight, $decision->unallocationReason);
 
                 return;
             }
 
-            $delaySeconds = max(
-                0,
-                $bestCandidate['occupied_until']->getTimestamp()
-                    - $plannedDeparture->getTimestamp(),
-            );
-
             GateSchedule::query()->create([
-                'gate_id' => $bestCandidate['gate']->id,
+                'gate_id' => $decision->gateId,
                 'flight_id' => $flight->id,
-                'occupied_from' => $bestCandidate['occupied_from'],
-                'occupied_until' => $bestCandidate['occupied_until'],
-                'delay_minutes' => (int) ceil($delaySeconds / 60),
+                'occupied_from' => $decision->occupiedFrom,
+                'occupied_until' => $decision->occupiedUntil,
+                'delay_minutes' => $decision->delayMinutes,
             ]);
 
             $flight->update([
@@ -260,85 +214,6 @@ class AllocatePendingFlightsJob implements ShouldBeUniqueUntilProcessing, Should
     private function lockKey(): string
     {
         return "flight-allocation:{$this->airportId}";
-    }
-
-    /**
-     * @return array{occupied_from: CarbonImmutable, occupied_until: CarbonImmutable}|null
-     */
-    private function findFirstAvailableSlot(
-        CarbonImmutable $desiredStart,
-        int $occupancyMinutes,
-        Collection $schedules,
-        Collection $exceptions,
-    ): ?array {
-        $blockedIntervals = [];
-
-        foreach ($schedules as $schedule) {
-            $blockedIntervals[] = [
-                'from' => CarbonImmutable::parse($schedule->occupied_from)->utc(),
-                'until' => CarbonImmutable::parse($schedule->occupied_until)->utc(),
-            ];
-        }
-
-        foreach ($exceptions as $exception) {
-            $blockedIntervals[] = [
-                'from' => $exception->start_date
-                    ? CarbonImmutable::parse($exception->start_date, 'UTC')->startOfDay()
-                    : null,
-                'until' => $exception->end_date
-                    ? CarbonImmutable::parse($exception->end_date, 'UTC')
-                        ->startOfDay()
-                        ->addDay()
-                    : null,
-            ];
-        }
-
-        usort($blockedIntervals, function (array $left, array $right): int {
-            if ($left['from'] === null) {
-                return $right['from'] === null ? 0 : -1;
-            }
-
-            if ($right['from'] === null) {
-                return 1;
-            }
-
-            return $left['from']->getTimestamp() <=> $right['from']->getTimestamp();
-        });
-
-        $candidateFrom = $desiredStart;
-
-        while (true) {
-            $candidateUntil = $candidateFrom->addMinutes($occupancyMinutes);
-            $blockingInterval = null;
-
-            foreach ($blockedIntervals as $interval) {
-                $startsBeforeCandidateEnds = $interval['from'] === null
-                    || $interval['from']->lt($candidateUntil);
-
-                $endsAfterCandidateStarts = $interval['until'] === null
-                    || $interval['until']->gt($candidateFrom);
-
-                if ($startsBeforeCandidateEnds && $endsAfterCandidateStarts) {
-                    $blockingInterval = $interval;
-
-                    break;
-                }
-            }
-
-            if (! $blockingInterval) {
-                return [
-                    'occupied_from' => $candidateFrom,
-                    'occupied_until' => $candidateUntil,
-                ];
-            }
-
-            // An exception without end_date blocks this gate indefinitely.
-            if ($blockingInterval['until'] === null) {
-                return null;
-            }
-
-            $candidateFrom = $blockingInterval['until'];
-        }
     }
 
     private function effectiveOccupancyMinutes(Gate $gate, Airport $airport): int

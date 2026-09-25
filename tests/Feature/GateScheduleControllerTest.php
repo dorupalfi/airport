@@ -77,6 +77,7 @@ class GateScheduleControllerTest extends TestCase
             'occupied_until' => CarbonImmutable::parse('2026-09-20 13:30:00', 'UTC'),
         ]);
 
+        // A11 verifies that the gate filter is an exact, case-insensitive code match rather than a prefix search.
         $firstPage = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20");
         $secondPage = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20&page=2");
         $filteredByGate = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20&gate=a1");

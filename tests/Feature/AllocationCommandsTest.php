@@ -37,6 +37,7 @@ class AllocationCommandsTest extends TestCase
         GateSchedule::query()->create(['flight_id' => $selectedFlight->id]);
         GateSchedule::query()->create(['flight_id' => $otherFlight->id]);
 
+        // Scope the destructive reset command to one managed airport.
         $this->artisan('flights:reset-allocation', ['airportId' => $selectedAirport->id])
             ->expectsOutput("Reset 1 flights and deleted 1 schedules for airport EDDF (ID {$selectedAirport->id}).")
             ->assertExitCode(0);
@@ -83,6 +84,8 @@ class AllocationCommandsTest extends TestCase
     {
         $selectedAirport = Airport::factory()->create(['code' => 'EDDF']);
         $otherAirport = Airport::factory()->create(['code' => 'EGLL']);
+
+        // Prevent an actual worker from processing the job while verifying the dispatch target.
         Queue::fake([AllocatePendingFlightsJob::class]);
 
         $this->artisan('flights:allocate-pending', ['airportId' => $selectedAirport->id])

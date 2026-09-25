@@ -43,6 +43,8 @@ class AirportReallocationTest extends TestCase
             'occupied_from' => CarbonImmutable::parse('2026-09-20 12:00:00', 'UTC'),
             'occupied_until' => CarbonImmutable::parse('2026-09-20 13:30:00', 'UTC'),
         ]);
+
+        // The reallocation job must be queued after the transaction, not executed by this API request.
         Queue::fake([AllocatePendingFlightsJob::class]);
 
         $response = $this->putJson("/api/airports/{$airport->id}", $this->airportPayload($airport, 3));
@@ -51,6 +53,8 @@ class AirportReallocationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('reallocation_queued', true)
             ->assertJsonCount(3, 'gates');
+
+        // A changed gate count replaces the gates and invalidates every previous allocation.
         $this->assertSame('pending', $flight->fresh()->allocation_status);
         $this->assertDatabaseCount('gate_schedules', 0);
         $this->assertDatabaseHas('gates', ['airport_id' => $airport->id, 'code' => 'A1']);

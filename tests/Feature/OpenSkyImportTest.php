@@ -8,6 +8,7 @@ use App\Models\Airport;
 use App\Models\ExternalAirport;
 use App\Models\Flight;
 use App\Services\Airports\ExternalAirportResolver;
+use App\Services\FlightAllocation\FlightAllocationPlanner;
 use App\Services\OpenSky\OpenSkyClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
@@ -70,6 +71,7 @@ class OpenSkyImportTest extends TestCase
         $departureAt = CarbonImmutable::create(2026, 9, 22, 13, 10, 0, 'UTC');
         $arrivalAt = CarbonImmutable::create(2026, 9, 22, 15, 5, 0, 'UTC');
 
+        // Faked HTTP keeps this import test deterministic and independent of live OpenSky credentials.
         $this->fakeOpenSky([[
             'icao24' => 'abc123',
             'callsign' => '  TEST123  ',
@@ -111,6 +113,7 @@ class OpenSkyImportTest extends TestCase
         $flight = Flight::query()->sole();
         $flight->update(['allocation_status' => 'allocated']);
 
+        // Reimporting a known flight may refresh source data but must preserve a completed allocation.
         $this->importJob($airport)->handle(app(OpenSkyClient::class), app(ExternalAirportResolver::class));
 
         $this->assertDatabaseCount('flights', 1);
@@ -158,7 +161,7 @@ class OpenSkyImportTest extends TestCase
     {
         $airport = Airport::factory()->create();
 
-        (new AllocatePendingFlightsJob($airport->id))->handle();
+        (new AllocatePendingFlightsJob($airport->id))->handle(app(FlightAllocationPlanner::class));
 
         $this->assertDatabaseCount('flights', 0);
         $this->assertDatabaseCount('gate_schedules', 0);

@@ -37,6 +37,7 @@ class GateReallocationTest extends TestCase
         [$airport, $gate, $flight] = $this->allocatedSchedule();
         Queue::fake([AllocatePendingFlightsJob::class]);
 
+        // Changing availability invalidates the existing airport-wide allocation plan.
         $response = $this->putJson("/api/gates/{$gate->id}", $this->gatePayload($gate, false));
 
         $response->assertOk()->assertJsonPath('reallocation_queued', true);
@@ -53,6 +54,7 @@ class GateReallocationTest extends TestCase
         [, $gate, $flight] = $this->allocatedSchedule();
         Queue::fake([AllocatePendingFlightsJob::class]);
 
+        // A future exception with no scheduled overlap must preserve the current allocation.
         $response = $this->putJson("/api/gates/{$gate->id}", $this->gatePayload($gate, true, [[
             'start_date' => '2026-10-01',
             'end_date' => '2026-10-02',

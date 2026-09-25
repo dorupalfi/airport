@@ -36,6 +36,8 @@ class ImportOpenSkyHourCommandTest extends TestCase
     {
         $firstAirport = Airport::factory()->create(['code' => 'EDDF']);
         $secondAirport = Airport::factory()->create(['code' => 'LRCL']);
+
+        // The command is expected to enqueue imports, never to perform a synchronous OpenSky import.
         Queue::fake();
 
         $this->artisan('opensky:import-hour', ['start' => '2026-09-20 14:00:00'])

@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -54,6 +55,7 @@ class ExternalAirportResolverTest extends TestCase
         $existing = ExternalAirport::factory()->create(['code' => 'EDDF']);
         Http::fake();
 
+        // A local record takes precedence and avoids any dependency on the external airport API.
         $resolved = app(ExternalAirportResolver::class)->resolve('eddf');
 
         $this->assertTrue($existing->is($resolved));
@@ -92,6 +94,7 @@ class ExternalAirportResolverTest extends TestCase
         $this->fakeApiNinjas([]);
         $resolver = app(ExternalAirportResolver::class);
 
+        // A negative cache prevents repeated requests for an airport that the provider cannot resolve.
         $this->assertNull($resolver->resolve('EDDF'));
         $this->assertNull($resolver->resolve('EDDF'));
 
@@ -116,6 +119,8 @@ class ExternalAirportResolverTest extends TestCase
 
     public function test_import_resolves_a_shared_external_airport_once_and_attaches_it_to_flights(): void
     {
+        // The follow-up allocation job is outside this resolver/import integration scenario.
+        Queue::fake();
         $airport = Airport::factory()->create(['code' => 'EDDF']);
         $departureAt = CarbonImmutable::create(2026, 9, 22, 13, 10, 0, 'UTC');
         Http::fake([
@@ -148,6 +153,8 @@ class ExternalAirportResolverTest extends TestCase
 
         $job = (new ImportAirportFlightsJob($airport->id, '2026-09-22T13:00:00+00:00'))
             ->withFakeQueueInteractions();
+
+        // A locally exhausted quota releases the job before it can make an API Ninjas request.
         $job->handle(app(OpenSkyClient::class), app(ExternalAirportResolver::class));
 
         $job->assertReleased(60);
@@ -237,6 +244,7 @@ class ExternalAirportResolverTest extends TestCase
             $table->foreignId('airport_id');
             $table->foreignId('departure_external_airport_id')->nullable();
             $table->foreignId('arrival_external_airport_id')->nullable();
+            $table->string('arrival_external_airport_code')->nullable();
             $table->string('icao24');
             $table->string('callsign')->nullable();
             $table->timestamp('estimated_arrival_at')->nullable();
