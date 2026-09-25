@@ -8,6 +8,7 @@ const schedules = ref([]);
 const pagination = ref({ currentPage: 1, lastPage: 1, total: 0 });
 const selectedAirportId = ref('');
 const selectedDate = ref('');
+const gate = ref('');
 const search = ref('');
 const error = ref('');
 const isLoadingFilters = ref(true);
@@ -64,6 +65,10 @@ async function loadSchedules(page = 1) {
             query.set('search', search.value);
         }
 
+        if (gate.value) {
+            query.set('gate', gate.value);
+        }
+
         const response = await fetch(`/api/gate-schedules?${query}`, {
             headers: { Accept: 'application/json' },
         });
@@ -95,6 +100,7 @@ function formatDateTime(value) {
     return new Intl.DateTimeFormat(undefined, {
         dateStyle: 'medium',
         timeStyle: 'short',
+        hour12: false,
         timeZone: 'UTC',
     }).format(new Date(value));
 }
@@ -139,7 +145,7 @@ onMounted(async () => {
         </header>
 
         <section class="data-card schedule-filters" aria-label="Schedule filters">
-            <div class="filter-grid">
+            <div class="filter-grid gate-schedule-filter-grid">
                 <label class="form-field">
                     Airport
                     <select v-model="selectedAirportId" :disabled="isLoadingFilters || airports.length === 0">
@@ -153,6 +159,10 @@ onMounted(async () => {
                     <select v-model="selectedDate" :disabled="isLoadingFilters || dates.length === 0">
                         <option v-for="date in dates" :key="date" :value="date">{{ date }}</option>
                     </select>
+                </label>
+                <label class="form-field" for="schedule-gate">
+                    Gate
+                    <input id="schedule-gate" v-model.trim="gate" type="search" placeholder="e.g. A1">
                 </label>
                 <form class="schedule-search" @submit.prevent="loadSchedules">
                     <label class="form-field" for="schedule-search">
@@ -187,6 +197,7 @@ onMounted(async () => {
                             <th scope="col">Gate</th>
                             <th scope="col">Destination</th>
                             <th scope="col">Callsign</th>
+                            <th scope="col">Estimated departure</th>
                             <th scope="col">Occupancy period</th>
                             <th scope="col">Delay</th>
                         </tr>
@@ -199,9 +210,12 @@ onMounted(async () => {
                                     <span class="destination-name">{{ schedule.destination.name }}</span>
                                     <span class="destination-location">{{ schedule.destination.code }} · {{ schedule.destination.city }}, {{ schedule.destination.country }}</span>
                                 </template>
-                                <span v-else class="destination-location">Destination unavailable</span>
+                                <span v-else class="destination-location">
+                                    {{ schedule.arrival_external_airport_code ? `Destination unavailable (${schedule.arrival_external_airport_code})` : 'Destination unavailable' }}
+                                </span>
                             </td>
                             <td>{{ schedule.callsign || '—' }}</td>
+                            <td>{{ schedule.estimated_departure_at ? formatDateTime(schedule.estimated_departure_at) : 'â€”' }}</td>
                             <td>
                                 <span class="schedule-period">{{ formatDateTime(schedule.occupied_from) }}</span>
                                 <span class="schedule-period">to {{ formatDateTime(schedule.occupied_until) }}</span>

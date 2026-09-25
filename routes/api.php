@@ -19,3 +19,4 @@ Route::get('unallocated-flights/filters', [UnallocatedFlightController::class, '
 Route::get('unallocated-flights', [UnallocatedFlightController::class, 'index']);
 Route::get('analytics/filters', [AnalyticsController::class, 'filters']);
 Route::get('analytics', [AnalyticsController::class, 'index']);
+Route::post('analytics/rebuild', [AnalyticsController::class, 'rebuild']);

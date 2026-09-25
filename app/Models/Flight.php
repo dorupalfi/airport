@@ -17,6 +17,7 @@ class Flight extends Model
         'icao24',
         'departure_external_airport_id',
         'arrival_external_airport_id',
+        'arrival_external_airport_code',
         'estimated_arrival_at',
         'estimated_departure_at',
         'allocation_status',

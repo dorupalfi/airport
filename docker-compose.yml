@@ -14,9 +14,9 @@ services:
       - sh
       - -c
       - >-
-        mkdir -p storage/app/private storage/app/public storage/framework/cache/data
+        mkdir -p bootstrap/cache storage/app/private storage/app/public storage/framework/cache/data
         storage/framework/sessions storage/framework/testing storage/framework/views storage/logs
-        && chown -R www-data:www-data storage
+        && chown -R www-data:www-data bootstrap/cache storage
         && exec php-fpm
     depends_on:
       postgres:
@@ -83,9 +83,9 @@ services:
       - sh
       - -c
       - >-
-        mkdir -p storage/app/private storage/app/public storage/framework/cache/data
+        mkdir -p bootstrap/cache storage/app/private storage/app/public storage/framework/cache/data
         storage/framework/sessions storage/framework/testing storage/framework/views storage/logs
-        && chown -R www-data:www-data storage
+        && chown -R www-data:www-data bootstrap/cache storage
         && exec php artisan queue:work --tries=3 --timeout=120
     depends_on:
       postgres:
@@ -106,9 +106,9 @@ services:
       - sh
       - -c
       - >-
-        mkdir -p storage/app/private storage/app/public storage/framework/cache/data
+        mkdir -p bootstrap/cache storage/app/private storage/app/public storage/framework/cache/data
         storage/framework/sessions storage/framework/testing storage/framework/views storage/logs
-        && chown -R www-data:www-data storage
+        && chown -R www-data:www-data bootstrap/cache storage
         && exec php artisan schedule:work
     depends_on:
       postgres:

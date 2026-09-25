@@ -40,14 +40,19 @@ class GateScheduleController extends Controller
             'date' => ['required', 'date_format:Y-m-d'],
             'airport_id' => ['required', 'integer', Rule::exists('airports', 'id')],
             'search' => ['nullable', 'string', 'max:100'],
+            'gate' => ['nullable', 'string', 'max:100'],
         ]);
 
         $search = strtolower(trim((string) ($data['search'] ?? '')));
+        $gate = strtolower(trim((string) ($data['gate'] ?? '')));
         $schedules = GateSchedule::query()
             ->select('gate_schedules.*')
             ->join('gates', 'gates.id', '=', 'gate_schedules.gate_id')
             ->where('gates.airport_id', $data['airport_id'])
             ->whereDate('gate_schedules.occupied_from', $data['date'])
+            ->when($gate !== '', function (Builder $query) use ($gate): void {
+                $query->whereRaw('LOWER(gates.code) = ?', [$gate]);
+            })
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $like = "%{$search}%";
 
@@ -62,7 +67,7 @@ class GateScheduleController extends Controller
             })
             ->with([
                 'gate:id,airport_id,code',
-                'flight:id,callsign,arrival_external_airport_id',
+                'flight:id,callsign,estimated_departure_at,arrival_external_airport_id,arrival_external_airport_code',
                 'flight.arrivalExternalAirport:id,code,name,city,country',
             ])
             ->orderBy('gate_schedules.occupied_from')
@@ -79,6 +84,8 @@ class GateScheduleController extends Controller
                 'city' => $schedule->flight->arrivalExternalAirport->city,
                 'country' => $schedule->flight->arrivalExternalAirport->country,
             ] : null,
+            'arrival_external_airport_code' => $schedule->flight->arrival_external_airport_code,
+            'estimated_departure_at' => $schedule->flight->estimated_departure_at?->utc()->toIso8601String(),
             'occupied_from' => $schedule->occupied_from?->utc()->toIso8601String(),
             'occupied_until' => $schedule->occupied_until?->utc()->toIso8601String(),
             'delay_minutes' => $schedule->delay_minutes,

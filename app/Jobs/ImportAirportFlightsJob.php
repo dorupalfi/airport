@@ -83,11 +83,13 @@ class ImportAirportFlightsJob implements ShouldBeUnique, ShouldQueue
                 }
 
                 $departureAt = CarbonImmutable::createFromTimestampUTC((int) $firstSeen);
+                $arrivalAirportCode = $this->airportCode(Arr::get($importedFlight, 'estArrivalAirport'));
                 $attributes = [
                     'callsign' => $this->callsign(Arr::get($importedFlight, 'callsign')),
                     'estimated_arrival_at' => $this->timestamp(Arr::get($importedFlight, 'lastSeen')),
                     'departure_external_airport_id' => $externalAirportIds[$this->airportCode(Arr::get($importedFlight, 'estDepartureAirport'))] ?? null,
-                    'arrival_external_airport_id' => $externalAirportIds[$this->airportCode(Arr::get($importedFlight, 'estArrivalAirport'))] ?? null,
+                    'arrival_external_airport_id' => $externalAirportIds[$arrivalAirportCode] ?? null,
+                    'arrival_external_airport_code' => $arrivalAirportCode,
                 ];
 
                 $flight = Flight::query()

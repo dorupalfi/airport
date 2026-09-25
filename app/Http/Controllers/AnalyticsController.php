@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Airport;
+use App\Models\Flight;
+use App\Services\Analytics\AllocationSnapshotCollector;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,16 +14,45 @@ class AnalyticsController extends Controller
 {
     public function filters(): JsonResponse
     {
+        $snapshotDates = DB::table('airport_allocation_snapshots')
+            ->distinct()
+            ->orderByDesc('snapshot_date')
+            ->pluck('snapshot_date');
+        $flightDates = Flight::query()
+            ->whereNotNull('estimated_departure_at')
+            ->selectRaw('DATE(estimated_departure_at) as flight_date')
+            ->distinct()
+            ->orderByDesc('flight_date')
+            ->pluck('flight_date');
+
         return response()->json([
             'airports' => Airport::query()
                 ->select(['id', 'name', 'code'])
                 ->orderBy('name')
                 ->get(),
-            'dates' => DB::table('airport_allocation_snapshots')
-                ->distinct()
-                ->orderByDesc('snapshot_date')
-                ->pluck('snapshot_date')
+            'dates' => $snapshotDates
+                ->merge($flightDates)
+                ->unique()
+                ->sortDesc()
                 ->values(),
+        ]);
+    }
+
+    public function rebuild(Request $request, AllocationSnapshotCollector $collector): JsonResponse
+    {
+        $filters = $request->validate([
+            'airport_id' => ['required', 'integer', 'exists:airports,id'],
+            'date' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $snapshotCount = $collector->rebuildDay(
+            CarbonImmutable::parse($filters['date'], 'UTC'),
+            (int) $filters['airport_id'],
+        );
+
+        return response()->json([
+            'message' => 'Analytics rebuilt from the current allocation data.',
+            'snapshot_count' => $snapshotCount,
         ]);
     }
 

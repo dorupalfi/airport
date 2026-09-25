@@ -200,6 +200,10 @@ h1 {
     align-items: end;
 }
 
+.gate-schedule-filter-grid {
+    grid-template-columns: minmax(160px, 1fr) minmax(130px, 0.7fr) minmax(120px, 0.65fr) minmax(260px, 1.3fr);
+}
+
 .schedule-search {
     display: flex;
     align-items: end;
@@ -221,7 +225,7 @@ h1 {
 
 .analytics-filter-grid {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(145px, 0.7fr);
+    grid-template-columns: minmax(180px, 1fr) minmax(145px, 0.7fr) auto;
     gap: 16px;
     align-items: end;
 }

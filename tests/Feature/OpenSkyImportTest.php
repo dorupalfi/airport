@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class OpenSkyImportTest extends TestCase
@@ -87,6 +88,7 @@ class OpenSkyImportTest extends TestCase
         $this->assertSame('pending', $flight->allocation_status);
         $this->assertSame($departureAirport->id, $flight->departure_external_airport_id);
         $this->assertSame($arrivalAirport->id, $flight->arrival_external_airport_id);
+        $this->assertSame('EGLL', $flight->arrival_external_airport_code);
         Queue::assertPushed(AllocatePendingFlightsJob::class, fn (AllocatePendingFlightsJob $job) => $job->airportId === $airport->id);
     }
 
@@ -114,6 +116,29 @@ class OpenSkyImportTest extends TestCase
         $this->assertDatabaseCount('flights', 1);
         $this->assertSame('allocated', $flight->fresh()->allocation_status);
         Queue::assertPushed(AllocatePendingFlightsJob::class, 1);
+    }
+
+    public function test_import_keeps_an_unresolved_arrival_airport_code(): void
+    {
+        Queue::fake();
+        $airport = Airport::factory()->create(['code' => 'EDDF']);
+        $departureAt = CarbonImmutable::create(2026, 9, 22, 13, 10, 0, 'UTC');
+        $this->fakeOpenSky([[
+            'icao24' => 'abc123',
+            'callsign' => 'TEST123',
+            'firstSeen' => $departureAt->timestamp,
+            'lastSeen' => null,
+            'estDepartureAirport' => null,
+            'estArrivalAirport' => 'zzzz',
+        ]]);
+        $resolver = Mockery::mock(ExternalAirportResolver::class);
+        $resolver->shouldReceive('resolve')->once()->with('ZZZZ')->andReturn(null);
+
+        $this->importJob($airport)->handle(app(OpenSkyClient::class), $resolver);
+
+        $flight = Flight::query()->sole();
+        $this->assertNull($flight->arrival_external_airport_id);
+        $this->assertSame('ZZZZ', $flight->arrival_external_airport_code);
     }
 
     public function test_not_found_flight_response_is_an_empty_successful_import(): void
@@ -181,6 +206,7 @@ class OpenSkyImportTest extends TestCase
             $table->foreignId('airport_id');
             $table->foreignId('departure_external_airport_id')->nullable();
             $table->foreignId('arrival_external_airport_id')->nullable();
+            $table->string('arrival_external_airport_code')->nullable();
             $table->string('icao24');
             $table->string('callsign')->nullable();
             $table->timestamp('estimated_arrival_at')->nullable();
@@ -191,6 +217,7 @@ class OpenSkyImportTest extends TestCase
 
         Schema::create('gate_schedules', function ($table): void {
             $table->id();
+            $table->foreignId('flight_id');
         });
     }
 }

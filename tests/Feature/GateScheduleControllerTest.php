@@ -45,7 +45,9 @@ class GateScheduleControllerTest extends TestCase
                     'icao24' => "flight{$number}",
                     'departure_external_airport_id' => null,
                     'arrival_external_airport_id' => null,
+                    'arrival_external_airport_code' => 'ZZZZ',
                     'allocation_status' => 'allocated',
+                    'estimated_departure_at' => CarbonImmutable::parse('2026-09-20 14:00:00', 'UTC')->addMinutes($number),
                 ]);
             $occupiedFrom = CarbonImmutable::parse('2026-09-20 12:00:00', 'UTC')->addMinutes($number);
             GateSchedule::query()->create([
@@ -56,19 +58,46 @@ class GateScheduleControllerTest extends TestCase
             ]);
         }
 
+        $otherGate = Gate::factory()->for($airport)->create([
+            'code' => 'A11',
+            'is_active' => true,
+        ]);
+        $otherFlight = Flight::factory()->for($airport)->create([
+            'callsign' => 'OTHERGATE',
+            'icao24' => 'othergate',
+            'departure_external_airport_id' => null,
+            'arrival_external_airport_id' => null,
+            'allocation_status' => 'allocated',
+            'estimated_departure_at' => CarbonImmutable::parse('2026-09-20 14:00:00', 'UTC'),
+        ]);
+        GateSchedule::query()->create([
+            'gate_id' => $otherGate->id,
+            'flight_id' => $otherFlight->id,
+            'occupied_from' => CarbonImmutable::parse('2026-09-20 12:00:00', 'UTC'),
+            'occupied_until' => CarbonImmutable::parse('2026-09-20 13:30:00', 'UTC'),
+        ]);
+
         $firstPage = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20");
         $secondPage = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20&page=2");
+        $filteredByGate = $this->getJson("/api/gate-schedules?airport_id={$airport->id}&date=2026-09-20&gate=a1");
 
         $firstPage
             ->assertOk()
             ->assertJsonCount(15, 'data')
             ->assertJsonPath('current_page', 1)
             ->assertJsonPath('last_page', 2)
-            ->assertJsonPath('total', 16);
+            ->assertJsonPath('total', 17)
+            ->assertJsonPath('data.1.arrival_external_airport_code', 'ZZZZ')
+            ->assertJsonPath('data.1.estimated_departure_at', '2026-09-20T14:01:00+00:00');
         $secondPage
             ->assertOk()
-            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('current_page', 2);
+        $filteredByGate
+            ->assertOk()
+            ->assertJsonCount(15, 'data')
+            ->assertJsonPath('total', 16)
+            ->assertJsonPath('data.0.gate_code', 'A1');
     }
 
     private function createTestTables(): void
@@ -88,6 +117,7 @@ class GateScheduleControllerTest extends TestCase
             $table->foreignId('airport_id');
             $table->foreignId('departure_external_airport_id')->nullable();
             $table->foreignId('arrival_external_airport_id')->nullable();
+            $table->string('arrival_external_airport_code')->nullable();
             $table->string('icao24');
             $table->string('callsign')->nullable();
             $table->timestamp('estimated_arrival_at')->nullable();

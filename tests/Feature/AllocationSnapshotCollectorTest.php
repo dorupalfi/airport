@@ -50,10 +50,10 @@ class AllocationSnapshotCollectorTest extends TestCase
             ['gate_id' => 2, 'start_date' => '2026-09-24', 'end_date' => '2026-09-24', 'reason' => 'Maintenance'],
         ]);
         DB::table('flights')->insert([
-            ['id' => 1, 'airport_id' => 1, 'icao24' => 'one', 'estimated_departure_at' => '2026-09-24 12:15:00', 'allocation_status' => 'allocated'],
-            ['id' => 2, 'airport_id' => 1, 'icao24' => 'two', 'estimated_departure_at' => '2026-09-24 13:00:00', 'allocation_status' => 'allocated'],
-            ['id' => 3, 'airport_id' => 1, 'icao24' => 'three', 'estimated_departure_at' => '2026-09-24 14:00:00', 'allocation_status' => 'unallocated'],
-            ['id' => 4, 'airport_id' => 1, 'icao24' => 'four', 'estimated_departure_at' => '2026-09-24 15:00:00', 'allocation_status' => 'pending'],
+            ['id' => 1, 'airport_id' => 1, 'icao24' => 'one', 'estimated_departure_at' => '2026-09-24 12:00:00', 'allocation_status' => 'allocated'],
+            ['id' => 2, 'airport_id' => 1, 'icao24' => 'two', 'estimated_departure_at' => '2026-09-24 12:00:00', 'allocation_status' => 'allocated'],
+            ['id' => 3, 'airport_id' => 1, 'icao24' => 'three', 'estimated_departure_at' => '2026-09-24 12:00:00', 'allocation_status' => 'unallocated'],
+            ['id' => 4, 'airport_id' => 1, 'icao24' => 'four', 'estimated_departure_at' => '2026-09-24 12:15:00', 'allocation_status' => 'pending'],
             ['id' => 5, 'airport_id' => 1, 'icao24' => 'five', 'estimated_departure_at' => '2026-09-24 16:00:00', 'allocation_status' => 'allocated'],
         ]);
         DB::table('gate_schedules')->insert([
@@ -79,14 +79,39 @@ class AllocationSnapshotCollectorTest extends TestCase
             'exception_blocked_gates' => 1,
             'busy_gates' => 1,
             'free_gates' => 1,
-            'on_time_flights' => 2,
+            'on_time_flights' => 1,
             'delayed_flights' => 1,
             'unallocated_flights' => 1,
-            'pending_flights' => 1,
+            'pending_flights' => 0,
             'active_exceptions' => 1,
             'inactive_gate_allocations' => 1,
             'exception_conflict_allocations' => 1,
             'invalid_allocations' => 2,
+        ]);
+
+        $this->assertSame(
+            22,
+            $collector->rebuildDay(
+                CarbonImmutable::parse('2026-09-24', 'UTC'),
+                1,
+                CarbonImmutable::parse('2026-09-25 10:30:00', 'UTC'),
+            ),
+        );
+        $this->assertDatabaseCount('airport_allocation_snapshots', 22);
+
+        $this->assertSame(
+            48,
+            $collector->rebuildDay(
+                CarbonImmutable::parse('2026-09-24', 'UTC'),
+                1,
+                CarbonImmutable::parse('2026-09-26 10:30:00', 'UTC'),
+            ),
+        );
+        $this->assertDatabaseCount('airport_allocation_snapshots', 48);
+        $this->assertDatabaseHas('airport_allocation_snapshots', [
+            'airport_id' => 1,
+            'snapshot_date' => '2026-09-24',
+            'captured_at' => '2026-09-24 00:00:00',
         ]);
     }
 

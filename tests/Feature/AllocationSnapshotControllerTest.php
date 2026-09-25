@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Services\Analytics\AllocationSnapshotCollector;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class AllocationSnapshotControllerTest extends TestCase
@@ -36,11 +39,17 @@ class AllocationSnapshotControllerTest extends TestCase
             $table->unsignedInteger('exception_conflict_allocations');
             $table->unsignedInteger('invalid_allocations');
         });
+        Schema::create('flights', function ($table): void {
+            $table->id();
+            $table->foreignId('airport_id');
+            $table->timestamp('estimated_departure_at')->nullable();
+        });
     }
 
     protected function tearDown(): void
     {
         Schema::dropIfExists('airport_allocation_snapshots');
+        Schema::dropIfExists('flights');
         Schema::dropIfExists('airports');
 
         parent::tearDown();
@@ -69,6 +78,31 @@ class AllocationSnapshotControllerTest extends TestCase
             ->assertJsonPath('snapshots.0.captured_at', '2026-09-24T00:00:00+00:00')
             ->assertJsonPath('snapshots.1.free_gates', 9)
             ->assertJsonPath('latest.captured_at', '2026-09-24T00:30:00+00:00');
+    }
+
+    public function test_it_rebuilds_the_selected_airport_day(): void
+    {
+        DB::table('airports')->insert([
+            'id' => 1,
+            'name' => 'Frankfurt Airport',
+            'code' => 'EDDF',
+        ]);
+
+        $collector = Mockery::mock(AllocationSnapshotCollector::class);
+        $collector->shouldReceive('rebuildDay')
+            ->once()
+            ->withArgs(function (CarbonImmutable $snapshotDate, int $airportId): bool {
+                return $snapshotDate->toDateString() === '2026-09-24' && $airportId === 1;
+            })
+            ->andReturn(48);
+        $this->app->instance(AllocationSnapshotCollector::class, $collector);
+
+        $this->postJson('/api/analytics/rebuild', [
+            'airport_id' => 1,
+            'date' => '2026-09-24',
+        ])
+            ->assertOk()
+            ->assertJsonPath('snapshot_count', 48);
     }
 
     /**

@@ -23,6 +23,7 @@ const selectedDate = ref('');
 const error = ref('');
 const isLoadingFilters = ref(true);
 const isLoadingSnapshots = ref(false);
+const isRebuilding = ref(false);
 const filtersReady = ref(false);
 
 const latestSnapshot = computed(() => snapshots.value.at(-1) ?? null);
@@ -161,6 +162,39 @@ async function reloadPage() {
     await loadSnapshots();
 }
 
+async function rebuildSnapshots() {
+    if (!selectedAirportId.value || !selectedDate.value) {
+        return;
+    }
+
+    isRebuilding.value = true;
+    error.value = '';
+
+    try {
+        const response = await fetch('/api/analytics/rebuild', {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                airport_id: selectedAirportId.value,
+                date: selectedDate.value,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Unable to rebuild allocation analytics.');
+        }
+
+        await loadSnapshots();
+    } catch (requestError) {
+        error.value = requestError.message;
+    } finally {
+        isRebuilding.value = false;
+    }
+}
+
 function formatTime(value) {
     return new Intl.DateTimeFormat(undefined, {
         hour: '2-digit',
@@ -205,6 +239,14 @@ onMounted(async () => {
                         <option v-for="date in dates" :key="date" :value="date">{{ date }}</option>
                     </select>
                 </label>
+                <button
+                    class="button button--secondary"
+                    type="button"
+                    :disabled="isLoadingFilters || isRebuilding || !selectedAirportId || !selectedDate"
+                    @click="rebuildSnapshots"
+                >
+                    {{ isRebuilding ? 'Rebuilding...' : 'Rebuild selected day' }}
+                </button>
             </div>
         </section>
 
@@ -262,7 +304,7 @@ onMounted(async () => {
                     <div class="card-title-row">
                         <div>
                             <h2>Flight allocation state</h2>
-                            <p class="chart-subtitle">Flights planned for the selected UTC day.</p>
+                            <p class="chart-subtitle">Cumulative departures up to each UTC snapshot.</p>
                         </div>
                     </div>
                     <div class="chart-content chart-content--tall">

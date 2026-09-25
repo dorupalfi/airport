@@ -95,6 +95,7 @@ function formatDateTime(value) {
     return new Intl.DateTimeFormat(undefined, {
         dateStyle: 'medium',
         timeStyle: 'short',
+        hour12: false,
         timeZone: 'UTC',
     }).format(new Date(value));
 }
@@ -182,7 +183,9 @@ onMounted(async () => {
                                     <span class="destination-name">{{ flight.destination.name }}</span>
                                     <span class="destination-location">{{ flight.destination.code }} · {{ flight.destination.city }}, {{ flight.destination.country }}</span>
                                 </template>
-                                <span v-else class="destination-location">Destination unavailable</span>
+                                <span v-else class="destination-location">
+                                    {{ flight.arrival_external_airport_code ? `Destination unavailable (${flight.arrival_external_airport_code})` : 'Destination unavailable' }}
+                                </span>
                             </td>
                             <td>{{ flight.callsign || '—' }}</td>
                             <td>{{ formatDateTime(flight.planned_departure_at) }}</td>

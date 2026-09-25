@@ -65,7 +65,7 @@ class UnallocatedFlightController extends Controller
                 });
             })
             ->with([
-                'flight:id,callsign,estimated_departure_at,arrival_external_airport_id',
+                'flight:id,callsign,estimated_departure_at,arrival_external_airport_id,arrival_external_airport_code',
                 'flight.arrivalExternalAirport:id,code,name,city,country',
             ])
             ->orderBy('flights.estimated_departure_at')
@@ -80,6 +80,7 @@ class UnallocatedFlightController extends Controller
                 'city' => $schedule->flight->arrivalExternalAirport->city,
                 'country' => $schedule->flight->arrivalExternalAirport->country,
             ] : null,
+            'arrival_external_airport_code' => $schedule->flight->arrival_external_airport_code,
             'planned_departure_at' => $schedule->flight->estimated_departure_at?->utc()->toIso8601String(),
             'unallocation_reason' => $schedule->unallocation_reason,
         ]);

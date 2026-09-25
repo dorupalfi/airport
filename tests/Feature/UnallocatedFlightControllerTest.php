@@ -120,6 +120,7 @@ class UnallocatedFlightControllerTest extends TestCase
                 'icao24' => strtolower($callsign),
                 'departure_external_airport_id' => null,
                 'arrival_external_airport_id' => $destination->id,
+                'arrival_external_airport_code' => $destination->code,
                 'estimated_departure_at' => CarbonImmutable::parse('2026-09-20 14:00:00', 'UTC'),
                 'allocation_status' => $allocationStatus,
             ]);
@@ -151,6 +152,7 @@ class UnallocatedFlightControllerTest extends TestCase
             $table->foreignId('airport_id');
             $table->foreignId('departure_external_airport_id')->nullable();
             $table->foreignId('arrival_external_airport_id')->nullable();
+            $table->string('arrival_external_airport_code')->nullable();
             $table->string('icao24');
             $table->string('callsign')->nullable();
             $table->timestamp('estimated_arrival_at')->nullable();

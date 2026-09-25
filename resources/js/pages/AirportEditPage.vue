@@ -83,7 +83,7 @@ async function saveAirport() {
 }
 
 function formatDate(value) {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(new Date(value));
 }
 
 function saveGate(updatedGate) {
